@@ -4,3 +4,5 @@ python-multipart
 scikit-learn
 pandas
 joblib
+easyocr
+opencv-python-headless
