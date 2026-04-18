@@ -79,14 +79,28 @@ model = MultinomialNB()
 model.fit(X_train, categories)
 
 # ==========================================
-# 2. เตรียมสมอง AI สำหรับอ่านตัวอักษร (EasyOCR)
+# 2. เตรียมสมอง AI สำหรับอ่านตัวอักษร (EasyOCR) - แบบ Lazy Loading
 # ==========================================
-# หมายเหตุ: รันครั้งแรกจะใช้เวลาโหลดโมเดล OCR สักพักนะครับ
-reader = easyocr.Reader(['th', 'en'])
+import os
+
+# สร้างตัวแปรเปล่าๆ ไว้ก่อน ยังไม่โหลดโมเดลเพื่อป้องกันเซิร์ฟเวอร์ Render ค้างตอนเปิดเครื่อง
+ocr_reader = None
+
+def get_ocr_reader():
+    global ocr_reader
+    # ถ้ายังไม่เคยโหลดโมเดล ให้โหลดแค่ครั้งแรกครั้งเดียว
+    if ocr_reader is None:
+        print("กำลังโหลดโมเดล EasyOCR...")
+        # ปิด GPU เพราะ Render ตัวฟรีใช้ CPU
+        ocr_reader = easyocr.Reader(['th', 'en'], gpu=False)
+    return ocr_reader
 
 @app.post("/analyze-slip/")
 async def analyze_slip(file: UploadFile = File(...)):
     try:
+        # โหลดโมเดลเฉพาะตอนที่มีคนอัปโหลดรูปจริงๆ
+        reader = get_ocr_reader()
+        
         # --- ก. แปลงไฟล์รูปภาพให้อยู่ในรูปแบบที่อ่านได้ ---
         image_bytes = await file.read()
         nparr = np.frombuffer(image_bytes, np.uint8)
@@ -99,7 +113,6 @@ async def analyze_slip(file: UploadFile = File(...)):
         # ==========================================
         # ฟีเจอร์ที่ 1: ตรวจจับว่าเป็นสลิปหรือไม่ (Document Verification)
         # ==========================================
-        # เช็คว่ามีคำสำคัญบังคับหรือไม่ เช่น "โอนเงินสำเร็จ" หรือ "รหัสอ้างอิง"
         is_slip = any(keyword in full_text for keyword in ["โอนเงิน", "สำเร็จ", "รหัสอ้างอิง", "transfer", "รายการ"])
         
         if not is_slip:
@@ -127,12 +140,10 @@ async def analyze_slip(file: UploadFile = File(...)):
         memo = "ไม่ได้ระบุบันทึกช่วยจำ"
         amount = "0.00"
 
-        # หาราคาคร่าวๆ (ดึงตัวเลขที่มีจุดทศนิยม)
         amounts = re.findall(r'\b\d{1,3}(?:,\d{3})*\.\d{2}\b', full_text)
         if amounts:
             amount = amounts[-1]
 
-        # หาบันทึกช่วยจำ
         for i, text in enumerate(ocr_results):
             if "บันทึกช่วยจำ" in text or "memo" in text.lower():
                 if i + 1 < len(ocr_results):
@@ -142,11 +153,9 @@ async def analyze_slip(file: UploadFile = File(...)):
         # ----------------------------------------------------
         # 🧠 ระบบ AI อัจฉริยะ (Hybrid Classification)
         # ----------------------------------------------------
-        category = "โอนเงิน" # ค่าเริ่มต้นถ้าไม่มีบันทึกช่วยจำ
+        category = "โอนเงิน"
 
         if memo != "ไม่ได้ระบุบันทึกช่วยจำ":
-            # 1. ระบบ Rule-Based (กฎตายตัว แม่นยำ 100%)
-            # ถ้าเจอคำเหล่านี้ในบันทึกช่วยจำ ให้จัดหมวดหมู่ทันทีไม่ต้องให้ AI เดา
             if any(word in memo for word in ["ทำบุญ", "กฐิน", "ผ้าป่า", "บริจาค", "ใส่บาตร"]):
                 category = "ทำบุญ/บริจาค"
             elif any(word in memo for word in ["เซเว่น", "7-11", "โลตัส", "lotus", "ของใช้"]):
@@ -155,8 +164,6 @@ async def analyze_slip(file: UploadFile = File(...)):
                 category = "ค่าสาธารณูปโภค"
             elif any(word in memo for word in ["รถเมล์", "bts", "mrt", "วิน", "แท็กซี่", "grab"]):
                 category = "ค่าเดินทาง"
-                
-            # 2. ระบบ Machine Learning (ถ้ากฎข้างบนเอาไม่อยู่ ค่อยให้ AI เดาจากความน่าจะเป็น)
             else:
                 text_vector = vectorizer.transform([memo])
                 category = model.predict(text_vector)[0]
@@ -174,6 +181,11 @@ async def analyze_slip(file: UploadFile = File(...)):
     except Exception as e:
         return {"status": "error", "message": f"ระบบประมวลผลขัดข้อง: {str(e)}"}
 
+# ==========================================
+# 3. ตั้งค่า Port สำหรับรันบน Cloud (Render)
+# ==========================================
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # ดึงค่า PORT จาก Render ถ้าไม่มีให้ใช้ 10000 
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
