@@ -231,7 +231,7 @@ export default function Home() {
         fd.append("file", file);
         try {
           // ✅ ใช้ API_URL จาก environment variable NEXT_PUBLIC_API_URL
-          const res = await fetch(`https://goofiness-clapping-elevator.ngrok-free.dev/analyze-slip/`, {
+          const res = await fetch(`${API_URL}/analyze-slip/`, {
             method: "POST",
             body: fd,
             headers: {
