@@ -231,11 +231,7 @@ export default function Home() {
         fd.append("file", file);
         try {
           // ✅ ใช้ API_URL จาก environment variable NEXT_PUBLIC_API_URL
-          const res = await fetch(`${API_URL}/analyze-slip/`, {
-            method: "POST",
-            body: fd,
-            headers: {
-              "ngrok-skip-browser-warning": "true", // จำเป็นสำหรับ ngrok free plan
+          const res = await fetch(`${API_URL}/analyze-slip/`, { method: "POST", body: fd, headers: { "ngrok-skip-browser-warning": "true" } }
             },
           });
           const data = await res.json();
