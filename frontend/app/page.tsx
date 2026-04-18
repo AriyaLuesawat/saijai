@@ -241,7 +241,7 @@ export default function Home() {
         const fd = new FormData();
         fd.append("file", file);
         try {
-          const res  = await fetch(`${API_URL}/analyze-slip/`, { method: "POST", body: fd });
+          const res  = await fetch(`https://goofiness-clapping-elevator.ngrok-free.dev/analyze-slip/`, { method: "POST", body: fd });
           const data = await res.json();
           if (data.status === "success") {
             results.push({
